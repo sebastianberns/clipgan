@@ -1,0 +1,7 @@
+torch
+torchvision
+
+# CLIP
+boto3
+ftfy
+regex
