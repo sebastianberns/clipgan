@@ -25,9 +25,12 @@ def main():
     # Script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('text_prompt', type=str)
-    parser.add_argument('--clip_config', type=str, default='ViT-B/32')
-    parser.add_argument('--generator', type=str, default='biggan-deep-512',
-                        help="Model name or path")
+    parser.add_argument('--clip_name_or_path', type=str, default='ViT-B/32',
+                        help="Name of pre-trained model to load or path to state dict")
+    parser.add_argument('--generator', choice=['biggan'],
+                        default='biggan', help="Generator architecture")
+    parser.add_argument('--g_name_or_path', type=str, default='biggan-deep-512',
+                        help="Name of pre-trained model to load or path to state dict")
     parser.add_argument('--steps', type=int, default=500)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=0.07)
@@ -209,7 +212,7 @@ class Latents(torch.nn.Module):
 
 class CLIPGAN:
     """ CLIPGAN
-        clip_config (str)       Name of pre-trained CLIP model
+        clip_name_or_path (str)       Name of pre-trained CLIP model
         steps (int)             Number of optimization steps
         batch_size (int)        Number of samples (latent vectors)
         lr (float)              Learning rate for Adam optimizer
@@ -219,8 +222,9 @@ class CLIPGAN:
         device (str)            Device name ('cuda', 'cpu')
     """
     def __init__(self, text_prompt,
-                 clip_config='ViT-B/32',  # CLIP model name or path
-                 generator='biggan-deep-512',  # Model name or path
+                 clip_name_or_path='ViT-B/32',  # CLIP model name or path
+                 generator='biggan',  # Generator architecture
+                 g_name_or_path='biggan-deep-512',  # Model name or path
                  steps=500,
                  batch_size=32,  # Number of latent vectors (input to BigGAN)
                  lr=0.07, beta1=0.9, beta2=0.999,
@@ -239,13 +243,13 @@ class CLIPGAN:
         set_random_seed(self.seed)
 
         # Load CLIP model and transform
-        if clip_config in CLIP_MODELS:
-            self.clip_model, clip_transform = clip.load(clip_config, device=self.device)
+        if clip_name_or_path in CLIP_MODELS:
+            self.clip_model, clip_transform = clip.load(clip_name_or_path, device=self.device)
         else:
-            self.clip_model, clip_transform = clip.load_from_file(clip_config, device=self.device)
+            self.clip_model, clip_transform = clip.load_from_file(clip_name_or_path, device=self.device)
 
-        # Load BigGAN
-        self.generator = BigGAN.from_pretrained(generator).to(self.device).eval()
+        # Load generator model
+        self.generator = BigGAN.from_pretrained(g_name_or_path).to(self.device).eval()
 
         self.normalize = Normalize(  # ImageNet means and std by channel for CLIP input pre-processing
             (0.48145466, 0.4578275, 0.40821073),
