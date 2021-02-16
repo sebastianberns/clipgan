@@ -212,7 +212,7 @@ class Latents(torch.nn.Module):
 
 class CLIPGAN:
     """ CLIPGAN
-        clip_name_or_path (str)       Name of pre-trained CLIP model
+        clip_name_or_path (str) Name of pre-trained CLIP model
         steps (int)             Number of optimization steps
         batch_size (int)        Number of samples (latent vectors)
         lr (float)              Learning rate for Adam optimizer
@@ -243,10 +243,7 @@ class CLIPGAN:
         set_random_seed(self.seed)
 
         # Load CLIP model and transform
-        if clip_name_or_path in CLIP_MODELS:
-            self.clip_model, clip_transform = clip.load(clip_name_or_path, device=self.device)
-        else:
-            self.clip_model, clip_transform = clip.load_from_file(clip_name_or_path, device=self.device)
+        self.clip_model, clip_transform = clip.load(clip_name_or_path, device=self.device)
 
         # Load generator model
         self.generator = BigGAN.from_pretrained(g_name_or_path).to(self.device).eval()
