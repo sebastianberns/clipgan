@@ -1,30 +1,40 @@
-# coding: utf-8
-""" BigGAN PyTorch model.
-    From "Large Scale GAN Training for High Fidelity Natural Image Synthesis"
-    By Andrew Brocky, Jeff Donahuey and Karen Simonyan.
-    https://openreview.net/forum?id=B1xsqj09Fm
-
-    PyTorch version implemented from the computational graph of the TF Hub module for BigGAN.
-    Some part of the code are adapted from https://github.com/brain-research/self-attention-gan
-
-    This version only comprises the generator (since the discriminator's weights are not released).
-    This version only comprises the "deep" version of BigGAN (see publication).
-"""
-from __future__ import (absolute_import, division, print_function, unicode_literals)
-
-import os
+# this code is a copy from huggingface
+# with some minor modifications
+import copy
+from functools import wraps
+from hashlib import sha256
+from io import open
+import json
 import logging
 import math
+import os
+import shutil
+import sys
+import tempfile
 
-import numpy as np
+import boto3
+from botocore.exceptions import ClientError
+import requests
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
 
-from .config import BigGANConfig
-from .file_utils import cached_path
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    from urlparse import urlparse
 
-logger = logging.getLogger(__name__)
+try:
+    from pathlib import Path
+    PYTORCH_PRETRAINED_BIGGAN_CACHE = Path(os.getenv('PYTORCH_PRETRAINED_BIGGAN_CACHE',
+                                           Path.home() / '.pytorch_pretrained_biggan'))
+except (AttributeError, ImportError):
+    PYTORCH_PRETRAINED_BIGGAN_CACHE = os.getenv('PYTORCH_PRETRAINED_BIGGAN_CACHE',
+                                                os.path.join(os.path.expanduser("~"), '.pytorch_pretrained_biggan'))
+
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
     'biggan-deep-128': "https://s3.amazonaws.com/models.huggingface.co/biggan/biggan-deep-128-pytorch_model.bin",
@@ -42,14 +52,249 @@ WEIGHTS_NAME = 'pytorch_model.bin'
 CONFIG_NAME = 'config.json'
 
 
+def url_to_filename(url, etag=None):
+    """
+    Convert `url` into a hashed filename in a repeatable way.
+    If `etag` is specified, append its hash to the url's, delimited
+    by a period.
+    """
+    url_bytes = url.encode('utf-8')
+    url_hash = sha256(url_bytes)
+    filename = url_hash.hexdigest()
+
+    if etag:
+        etag_bytes = etag.encode('utf-8')
+        etag_hash = sha256(etag_bytes)
+        filename += '.' + etag_hash.hexdigest()
+
+    return filename
+
+
+def cached_path(url_or_filename, cache_dir=None):
+    """
+    Given something that might be a URL (or might be a local path),
+    determine which. If it's a URL, download the file and cache it, and
+    return the path to the cached file. If it's already a local path,
+    make sure the file exists and then return the path.
+    """
+    if cache_dir is None:
+        cache_dir = PYTORCH_PRETRAINED_BIGGAN_CACHE
+    if sys.version_info[0] == 3 and isinstance(url_or_filename, Path):
+        url_or_filename = str(url_or_filename)
+    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
+        cache_dir = str(cache_dir)
+
+    parsed = urlparse(url_or_filename)
+
+    if parsed.scheme in ('http', 'https', 's3'):
+        # URL, so get it from the cache (downloading if necessary)
+        return get_from_cache(url_or_filename, cache_dir)
+    elif os.path.exists(url_or_filename):
+        # File, and it exists.
+        return url_or_filename
+    elif parsed.scheme == '':
+        # File, but it doesn't exist.
+        raise EnvironmentError("file {} not found".format(url_or_filename))
+    else:
+        # Something unknown
+        raise ValueError("unable to parse {} as a URL or as a local path".format(url_or_filename))
+
+
+def split_s3_path(url):
+    """Split a full s3 path into the bucket name and path."""
+    parsed = urlparse(url)
+    if not parsed.netloc or not parsed.path:
+        raise ValueError("bad s3 path {}".format(url))
+    bucket_name = parsed.netloc
+    s3_path = parsed.path
+    # Remove '/' at beginning of path.
+    if s3_path.startswith("/"):
+        s3_path = s3_path[1:]
+    return bucket_name, s3_path
+
+
+def s3_request(func):
+    """
+    Wrapper function for s3 requests in order to create more helpful error
+    messages.
+    """
+
+    @wraps(func)
+    def wrapper(url, *args, **kwargs):
+        try:
+            return func(url, *args, **kwargs)
+        except ClientError as exc:
+            if int(exc.response["Error"]["Code"]) == 404:
+                raise EnvironmentError("file {} not found".format(url))
+            else:
+                raise
+
+    return wrapper
+
+
+@s3_request
+def s3_etag(url):
+    """Check ETag on S3 object."""
+    s3_resource = boto3.resource("s3")
+    bucket_name, s3_path = split_s3_path(url)
+    s3_object = s3_resource.Object(bucket_name, s3_path)
+    return s3_object.e_tag
+
+
+@s3_request
+def s3_get(url, temp_file):
+    """Pull a file directly from S3."""
+    s3_resource = boto3.resource("s3")
+    bucket_name, s3_path = split_s3_path(url)
+    s3_resource.Bucket(bucket_name).download_fileobj(s3_path, temp_file)
+
+
+def http_get(url, temp_file):
+    req = requests.get(url, stream=True)
+    content_length = req.headers.get('Content-Length')
+    total = int(content_length) if content_length is not None else None
+    progress = tqdm(unit="B", total=total)
+    for chunk in req.iter_content(chunk_size=1024):
+        if chunk:  # filter out keep-alive new chunks
+            progress.update(len(chunk))
+            temp_file.write(chunk)
+    progress.close()
+
+
+def get_from_cache(url, cache_dir=None):
+    """
+    Given a URL, look for the corresponding dataset in the local cache.
+    If it's not there, download it. Then return the path to the cached file.
+    """
+    if cache_dir is None:
+        cache_dir = PYTORCH_PRETRAINED_BIGGAN_CACHE
+    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
+        cache_dir = str(cache_dir)
+
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    # Get eTag to add to filename, if it exists.
+    if url.startswith("s3://"):
+        etag = s3_etag(url)
+    else:
+        response = requests.head(url, allow_redirects=True)
+        if response.status_code != 200:
+            raise IOError("HEAD request failed for url {} with status code {}"
+                          .format(url, response.status_code))
+        etag = response.headers.get("ETag")
+
+    filename = url_to_filename(url, etag)
+
+    # get cache path to put the file
+    cache_path = os.path.join(cache_dir, filename)
+
+    if not os.path.exists(cache_path):
+        # Download to temporary file, then copy to cache dir once finished.
+        # Otherwise you get corrupt cache entries if the download gets interrupted.
+        with tempfile.NamedTemporaryFile() as temp_file:
+            logger.info("%s not found in cache, downloading to %s", url, temp_file.name)
+
+            # GET file object
+            if url.startswith("s3://"):
+                s3_get(url, temp_file)
+            else:
+                http_get(url, temp_file)
+
+            # we are copying the file before closing it, so flush to avoid truncation
+            temp_file.flush()
+            # shutil.copyfileobj() starts at the current position, so go to the start
+            temp_file.seek(0)
+
+            logger.info("copying %s to cache at %s", temp_file.name, cache_path)
+            with open(cache_path, 'wb') as cache_file:
+                shutil.copyfileobj(temp_file, cache_file)
+
+            logger.info("creating metadata file for %s", cache_path)
+            meta = {'url': url, 'etag': etag}
+            meta_path = cache_path + '.json'
+            with open(meta_path, 'w', encoding="utf-8") as meta_file:
+                json.dump(meta, meta_file)
+
+            logger.info("removing temp file %s", temp_file.name)
+
+    return cache_path
+
+
+class BigGANConfig(object):
+    """ Configuration class to store the configuration of a `BigGAN`.
+        Defaults are for the 128x128 model.
+        layers tuple are (up-sample in the layer ?, input channels, output channels)
+    """
+    def __init__(self,
+                 output_dim=128,
+                 z_dim=128,
+                 class_embed_dim=128,
+                 channel_width=128,
+                 num_classes=1000,
+                 layers=[(False, 16, 16),
+                         (True, 16, 16),
+                         (False, 16, 16),
+                         (True, 16, 8),
+                         (False, 8, 8),
+                         (True, 8, 4),
+                         (False, 4, 4),
+                         (True, 4, 2),
+                         (False, 2, 2),
+                         (True, 2, 1)],
+                 attention_layer_position=8,
+                 eps=1e-4,
+                 n_stats=51):
+        """Constructs BigGANConfig. """
+        self.output_dim = output_dim
+        self.z_dim = z_dim
+        self.class_embed_dim = class_embed_dim
+        self.channel_width = channel_width
+        self.num_classes = num_classes
+        self.layers = layers
+        self.attention_layer_position = attention_layer_position
+        self.eps = eps
+        self.n_stats = n_stats
+
+    @classmethod
+    def from_dict(cls, json_object):
+        """Constructs a `BigGANConfig` from a Python dictionary of parameters."""
+        config = BigGANConfig()
+        for key, value in json_object.items():
+            config.__dict__[key] = value
+        return config
+
+    @classmethod
+    def from_json_file(cls, json_file):
+        """Constructs a `BigGANConfig` from a json file of parameters."""
+        with open(json_file, "r", encoding='utf-8') as reader:
+            text = reader.read()
+        return cls.from_dict(json.loads(text))
+
+    def __repr__(self):
+        return str(self.to_json_string())
+
+    def to_dict(self):
+        """Serializes this instance to a Python dictionary."""
+        output = copy.deepcopy(self.__dict__)
+        return output
+
+    def to_json_string(self):
+        """Serializes this instance to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
 def snconv2d(eps=1e-12, **kwargs):
     return nn.utils.spectral_norm(nn.Conv2d(**kwargs), eps=eps)
+
 
 def snlinear(eps=1e-12, **kwargs):
     return nn.utils.spectral_norm(nn.Linear(**kwargs), eps=eps)
 
+
 def sn_embedding(eps=1e-12, **kwargs):
     return nn.utils.spectral_norm(nn.Embedding(**kwargs), eps=eps)
+
 
 class SelfAttn(nn.Module):
     """ Self attention Layer"""
@@ -96,7 +341,6 @@ class SelfAttn(nn.Module):
 class BigGANBatchNorm(nn.Module):
     """ This is a batch norm module that can handle conditional input and can be provided with pre-computed
         activation means and variances for various truncation parameters.
-
         We cannot just rely on torch.batch_norm since it cannot handle
         batched weights (pytorch 1.0.1). We computate batch_norm our-self without updating running means and variances.
         If you want to train this model you should add running means and variance computation logic.
@@ -198,6 +442,7 @@ class GenBlock(nn.Module):
         out = x + x0
         return out
 
+
 class Generator(nn.Module):
     def __init__(self, config):
         super(Generator, self).__init__()
@@ -226,7 +471,7 @@ class Generator(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, cond_vector, truncation):
-        z = self.gen_z(cond_vector)
+        z = self.gen_z(cond_vector[0].unsqueeze(0))
 
         # We use this conversion step to be able to use TF weights:
         # TF convention on shape is [batch, height, width, channels]
@@ -234,9 +479,11 @@ class Generator(nn.Module):
         z = z.view(-1, 4, 4, 16 * self.config.channel_width)
         z = z.permute(0, 3, 1, 2).contiguous()
 
-        for i, layer in enumerate(self.layers):
+        next_available_latent_index = 1
+        for layer in self.layers:
             if isinstance(layer, GenBlock):
-                z = layer(z, cond_vector, truncation)
+                z = layer(z, cond_vector[next_available_latent_index].unsqueeze(0), truncation)
+                next_available_latent_index += 1
             else:
                 z = layer(z)
 
@@ -246,6 +493,7 @@ class Generator(nn.Module):
         z = z[:, :3, ...]
         z = self.tanh(z)
         return z
+
 
 class BigGAN(nn.Module):
     """BigGAN Generator."""
@@ -296,35 +544,25 @@ class BigGAN(nn.Module):
         return z
 
 
-if __name__ == "__main__":
-    import PIL
-    from .utils import truncated_noise_sample, save_as_images, one_hot_from_names
-    from .convert_tf_to_pytorch import load_tf_weights_in_biggan
+def one_hot_from_int(int_or_list, batch_size=1):
+    """ Create a one-hot vector from a class index or a list of class indices.
+        Params:
+            int_or_list: int, or list of int, of the imagenet classes (between 0 and 999)
+            batch_size: batch size.
+                If int_or_list is an int create a batch of identical classes.
+                If int_or_list is a list, we should have `len(int_or_list) == batch_size`
+        Output:
+            array of shape (batch_size, 1000)
+    """
+    if isinstance(int_or_list, int):
+        int_or_list = [int_or_list]
 
-    load_cache = False
-    cache_path = './saved_model.pt'
-    config = BigGANConfig()
-    model = BigGAN(config)
-    if not load_cache:
-        model = load_tf_weights_in_biggan(model, config, './models/model_128/', './models/model_128/batchnorms_stats.bin')
-        torch.save(model.state_dict(), cache_path)
-    else:
-        model.load_state_dict(torch.load(cache_path))
+    if len(int_or_list) == 1 and batch_size > 1:
+        int_or_list = [int_or_list[0]] * batch_size
 
-    model.eval()
+    assert batch_size == len(int_or_list)
 
-    truncation = 0.4
-    noise = truncated_noise_sample(batch_size=2, truncation=truncation)
-    label = one_hot_from_names('diver', batch_size=2)
-
-    # Tests
-    # noise = np.zeros((1, 128))
-    # label = [983]
-
-    noise = torch.tensor(noise, dtype=torch.float)
-    label = torch.tensor(label, dtype=torch.float)
-    with torch.no_grad():
-        outputs = model(noise, label, truncation)
-    print(outputs.shape)
-
-    save_as_images(outputs)
+    array = np.zeros((batch_size, 1000), dtype=np.float32)
+    for i, j in enumerate(int_or_list):
+        array[i, j] = 1.0
+    return array

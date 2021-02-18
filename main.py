@@ -13,8 +13,7 @@ from torchvision.utils import save_image
 
 # Local packages
 import clip
-from clip.clip import _MODELS as CLIP_MODELS
-from pytorch_pretrained_biggan import BigGAN
+from biggan import BigGAN
 
 
 # Download and save pre-trained BigGAN files to this directory
@@ -192,12 +191,12 @@ class Latents(torch.nn.Module):
         self.device = get_device(device)
 
         # Sample latent vectors from a standard Gaussian (mean 0, std dev 1)
-        latents = torch.zeros(batch_size, z_dim, device=device).normal_(std=1)
+        latents = torch.zeros(batch_size, z_dim, device=self.device).normal_(std=1)
         self.latents = torch.nn.Parameter(latents)
 
         # Sample class
         if num_classes > 0:
-            classes = torch.zeros(batch_size, num_classes, device=device).normal_(-3.9, .3)
+            classes = torch.zeros(batch_size, num_classes, device=self.device).normal_(-3.9, .3)
             # class_id = 117
             # classes = torch.zeros(batch_size, num_classes)
             # classes[:, class_id] = 1.0
@@ -303,8 +302,7 @@ class CLIPGAN:
         loss.backward()
         self.optimizer.step()
 
-        # Find index of best image
-        # Second lowest class loss
+        # Pick index of best image (lowest class loss)
         best = torch.topk(class_loss, k=1, largest=False)[1]
         self.save_imgs(gen_imgs[best:best+1], step)
 
