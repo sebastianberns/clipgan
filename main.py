@@ -23,7 +23,7 @@ def main():
     parser.add_argument('text_prompt', type=str)
     parser.add_argument('--clip_name_or_path', type=str, default='ViT-B/32',
                         help="Name of pre-trained model to load or path to state dict")
-    parser.add_argument('--generator', choice=['biggan'],
+    parser.add_argument('--generator', choices=['biggan'],
                         default='biggan', help="Generator architecture")
     parser.add_argument('--g_name_or_path', type=str, default='biggan-deep-512',
                         help="Name of pre-trained model to load or path to state dict")
@@ -145,7 +145,7 @@ class CLIPGAN:
         self.lr = lr
         self.betas = (beta1, beta2)
         self.save_path = Path(save_path/text_prompt_dir)
-        self.save_path.mkdir()  # Create directory
+        self.save_path.mkdir(parents=True, exist_ok=True)  # Create directory
         self.seed = seed
         self.device = get_device(device)
 
@@ -225,7 +225,7 @@ class CLIPGAN:
         _, _, width, height = images.size()
         assert width >= height
 
-        clip_img_size = self.clip_model.visual.input_resolution
+        clip_img_size = self.clip_model.input_resolution.item()
 
         cuts = []
         for _ in range(num_cuts):
