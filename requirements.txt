@@ -1,7 +1,13 @@
+# All
 torch
 torchvision
+tqdm
+
+# BigGAN
+boto3
+requests
 
 # CLIP
-boto3
 ftfy
+Pillow
 regex
