@@ -1,5 +1,8 @@
-# this code is a copy from huggingface
-# with some minor modifications
+""" Original BigGAN implementation by huggingface
+    Modified version from Big Sleep
+    https://github.com/lucidrains/big-sleep/blob/main/big_sleep/biggan.py
+"""
+
 import copy
 from functools import wraps
 from hashlib import sha256
