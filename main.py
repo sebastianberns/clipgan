@@ -139,11 +139,13 @@ class CLIPGAN:
                  seed=7,
                  device='cuda'):
         self.text_prompt = text_prompt
+        text_prompt_dir = self.text_prompt.replace(" ", "_")
         self.steps = steps
         self.batch_size = batch_size
         self.lr = lr
         self.betas = (beta1, beta2)
-        self.save_path = Path(save_path)
+        self.save_path = Path(save_path/text_prompt_dir)
+        self.save_path.mkdir()  # Create directory
         self.seed = seed
         self.device = get_device(device)
 
@@ -313,7 +315,7 @@ class CLIPGAN:
 
     def save_images(self, image, step):
         pad = len(str(self.steps))  # Number of digits for padding
-        filename = f"frame_{step:0{pad}}.png"  # Prefix filename with zeros
+        filename = f"step_{step:0{pad}}.png"  # Prefix filename with zeros
         save_image(image, self.save_path/filename,  # torchvision method
                    normalize=True, range=(-1., +1.))
 
