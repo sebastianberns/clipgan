@@ -2,14 +2,15 @@
 
 # System packages
 import argparse
-import os
 from pathlib import Path
 import time
 
 # Global packages
 import torch
+from torch.nn.functional import interpolate
 from torchvision.transforms import Normalize
 from torchvision.utils import save_image
+from tqdm import trange
 
 # Local packages
 import clip
@@ -131,7 +132,9 @@ class CLIPGAN:
                  g_name_or_path='biggan-deep-512',  # Model name or path
                  steps=500,
                  batch_size=32,  # Number of latent vectors (input to BigGAN)
-                 lr=0.07, beta1=0.9, beta2=0.999,
+                 lr=0.07,
+                 beta1=0.9,
+                 beta2=0.999,
                  save_path='save/',
                  seed=7,
                  device='cuda'):
@@ -154,10 +157,6 @@ class CLIPGAN:
                                                 cache_dir='./models/'
                                                 ).to(self.device).eval()
 
-        self.normalize = Normalize(  # ImageNet means and std by channel for CLIP input pre-processing
-            (0.48145466, 0.4578275, 0.40821073),
-            (0.26862954, 0.26130258, 0.27577711))
-
         # Preprocess prompt and get its CLIP embedding
         text_tokens = clip.tokenize(self.text_prompt).to(self.device)
         self.text_embed = self.clip_model.encode_text(text_tokens).detach().clone()
@@ -174,7 +173,7 @@ class CLIPGAN:
         self.run()
 
     def run(self):
-        for step in range(1, self.steps+1):
+        for step in trange(1, self.steps+1):
             best_img = self.optimize(step)
             self.save_images(best_img, step)
 
@@ -186,10 +185,9 @@ class CLIPGAN:
         with torch.no_grad():
             gen_imgs = self.generator(latvecs, latcls, 1)
 
-        # Data augmentation: random cuts
-        clip_input = self.data_augmentation(gen_imgs, num_cuts=128)
-        clip_input = self.normalize((clip_input + 1) / 2)  # Normalize
-        gen_imgs_embed = self.clip_model.encode_image(clip_input)  # CLIP image encoding
+        clip_input = self.clip_image_preprocessing(gen_imgs, num_cuts=128)
+        # Compute CLIP image encoding
+        gen_imgs_embed = self.clip_model.encode_image(clip_input)
 
         lat_loss = self.compute_latent_loss(latvecs, threshold=1)
         class_loss = self.compute_class_loss(latcls)
@@ -210,10 +208,22 @@ class CLIPGAN:
         best = torch.topk(class_loss, k=1, largest=False)[1]
         return gen_imgs[best:best+1]
 
-    def data_augmentation(self, images, num_cuts=32):
-        """ Increase the number of images by cutting out random subimages """
-        _, _, width, height = images.size()  # Get image dimensions
-        assert width == height, "Images must be squares"
+    def clip_image_preprocessing(self, images, num_cuts=32):
+        """ Preprocess generated images to be fed into CLIP
+            Increase the number of images by cutting out random subimages
+            Convert to Tensor
+            Change range of values from [-1, +1] to [0, 1]
+            Normalize by ImageNet statistics
+        """
+        # ImageNet means and std by channel
+        normalize = Normalize((0.48145466, 0.4578275, 0.40821073),
+                              (0.26862954, 0.26130258, 0.27577711))
+
+        # Check dimensions of generated images
+        _, _, width, height = images.size()
+        assert width >= height
+
+        clip_img_size = self.clip_model.visual.input_resolution
 
         cuts = []
         for _ in range(num_cuts):
@@ -234,10 +244,14 @@ class CLIPGAN:
             cut = images[:, :, offsetx:offsetx + size, offsety:offsety + size]
 
             # Scale random cuts to CLIP input size
-            cut = torch.nn.functional.interpolate(cut, (224, 224), mode='nearest')
+            # torch.nn.functional.interpolate
+            cut = interpolate(cut, (clip_img_size, clip_img_size), mode='nearest')
 
             cuts.append(cut)  # Collect cuts in list
-        return torch.cat(cuts, dim=0)  # Create tensor from list
+
+        cuts = torch.cat(cuts, dim=0)  # Create tensor from list
+        cuts = normalize((cuts + 1) / 2)  # Normalize
+        return cuts
 
     def compute_latent_loss(self, latvecs, threshold=1):
         """ Latent vector loss
