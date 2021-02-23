@@ -15,12 +15,12 @@ from torchvision.utils import save_image
 from tqdm import trange
 
 # Local packages
-try:  # From command line
+if __name__ == '__main__':  # Run code as script
     import clip
     from biggan import BigGAN
     from version import __version__
-except ModuleNotFoundError:  # As a package
-    from .clip import *
+else:  # Run code as package
+    from . import clip
     from .biggan import BigGAN
     from .version import __version__
 
