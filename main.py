@@ -172,6 +172,7 @@ class CLIPGAN:
                  beta2=0.999,
                  save_path='save/',
                  seed=int(time()),
+                 deterministic=False,
                  device='cuda'):
         self.text_prompt = text_prompt
         text_prompt_dir = self.text_prompt.replace(" ", "_")
@@ -182,9 +183,11 @@ class CLIPGAN:
         self.save_path = Path(save_path)/text_prompt_dir
         self.save_path.mkdir(parents=True, exist_ok=True)  # Create directory
         self.seed = seed
+        self.deterministic = deterministic
         self.device = get_device(device)
 
         set_random_seed(self.seed)
+        set_determinism(self.deterministic)
 
         # Load CLIP model and transform
         self.clip_model, clip_transform = clip.load(clip_name_or_path, device=self.device)
