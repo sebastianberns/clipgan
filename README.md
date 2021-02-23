@@ -45,7 +45,7 @@ Arguments:
 - `steps` (int) Number of optimization steps (default: 500)
 - `batch_size` (int) Number of images to generate and optimize in parallel (default: 32)
 - `lr` (float) Optimization step size for Adam optimizer (default: 0.07)
-- `beta1` (float) and `--beta2` (float) Adam optimizer parameters (default: 0.9 and 0.999)
+- `beta1` (float) and `beta2` (float) Adam optimizer parameters (default: 0.9 and 0.999)
 - `save_path` (str) Path to save directory (default: './save'). A new folder based on the text prompt will be created here. Be careful, files will be overwritten without warning!
 - `seed` (int) Random seed number (default: current time)
 - `device` (str) Device to run models on (default: 'cuda')
@@ -62,7 +62,7 @@ python main.py "Text prompt" \
 --save_path './output'
 ```
 
-### From another script
+### From another Python script
 
 ```python
 from clipgan load CLIPGAN
