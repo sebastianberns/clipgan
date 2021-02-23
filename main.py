@@ -44,6 +44,7 @@ def main():
     parser.add_argument('--beta2', type=float, default=0.999)
     parser.add_argument('--save_path', type=directory, default='./save')
     parser.add_argument('--seed', type=int, default=int(time()))
+    parser.add_argument('--deterministic', type=bool, default=False)
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
 
@@ -77,15 +78,33 @@ def filepath(path):
     return f
 
 
-def set_random_seed(self, seed=int(time())):
+def set_random_seed(seed=int(time())):
     """ Set random global seed
         seed (int) (optional)
     """
+    assert type(seed) == int
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
+
+
+def set_determinism(d=False):
+    """ Make Pytorch and CUDA behave deterninistically as best as possible
+        (no guarantees)
+        https://pytorch.org/docs/stable/notes/randomness.html
+    """
+    assert type(d) == bool
+
+    torch.set_deterministic(d)
+    torch.backends.cudnn.deterministic = d
+
+    # Disabling the benchmarking feature with
+    #   `torch.backends.cudnn.benchmark = False`
+    # causes cuDNN to deterministically select an algorithm,
+    # possibly at the cost of reduced performance.
+    torch.backends.cudnn.benchmark = not d
 
 
 def get_device(device='cuda'):
