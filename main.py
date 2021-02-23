@@ -82,7 +82,7 @@ def set_random_seed(seed=int(time())):
     """ Set random global seed
         seed (int) (optional)
     """
-    assert type(seed) == int
+    assert isinstance(seed, int)
 
     random.seed(seed)
     np.random.seed(seed)
@@ -95,7 +95,7 @@ def set_determinism(d=False):
         (no guarantees)
         https://pytorch.org/docs/stable/notes/randomness.html
     """
-    assert type(d) == bool
+    assert isinstance(d, bool)
 
     torch.set_deterministic(d)
     torch.backends.cudnn.deterministic = d
