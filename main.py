@@ -4,7 +4,7 @@
 import argparse
 from pathlib import Path
 import random
-import time
+from time import time
 
 # Global packages
 import numpy as np
@@ -39,7 +39,7 @@ def main():
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.999)
     parser.add_argument('--save_path', type=directory, default='./save')
-    parser.add_argument('--seed', type=int, default=time.time())
+    parser.add_argument('--seed', type=int, default=int(time()))
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
 
@@ -68,7 +68,7 @@ def filepath(path):
     return f
 
 
-def set_random_seed(self, seed=time.time()):
+def set_random_seed(self, seed=int(time())):
     """ Set random global seed
         seed (int) (optional)
     """
@@ -143,7 +143,7 @@ class CLIPGAN:
                  beta1=0.9,
                  beta2=0.999,
                  save_path='save/',
-                 seed=7,
+                 seed=int(time()),
                  device='cuda'):
         self.text_prompt = text_prompt
         text_prompt_dir = self.text_prompt.replace(" ", "_")
