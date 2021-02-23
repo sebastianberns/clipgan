@@ -33,7 +33,7 @@ def main():
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.999)
     parser.add_argument('--save_path', type=directory, default='./save')
-    parser.add_argument('--seed', type=int, default=7)
+    parser.add_argument('--seed', type=int, default=time.time())
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
 
