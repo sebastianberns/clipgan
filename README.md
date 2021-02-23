@@ -65,7 +65,7 @@ python main.py "Text prompt" \
 ### From another Python script
 
 ```python
-from clipgan load CLIPGAN
+from clipgan import CLIPGAN
 
 model = CLIPGAN("Text prompt",
                 clip_name_or_path='./models/ViT-B-32.pt',

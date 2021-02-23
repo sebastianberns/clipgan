@@ -13,8 +13,12 @@ from torchvision.utils import save_image
 from tqdm import trange
 
 # Local packages
-import clip
-from biggan import BigGAN
+try:  # From command line
+    import clip
+    from biggan import BigGAN
+except ModuleNotFoundError:  # As a package
+    from .clip import *
+    from .biggan import BigGAN
 
 
 def main():
@@ -145,7 +149,7 @@ class CLIPGAN:
         self.batch_size = batch_size
         self.lr = lr
         self.betas = (beta1, beta2)
-        self.save_path = Path(save_path/text_prompt_dir)
+        self.save_path = Path(save_path)/text_prompt_dir
         self.save_path.mkdir(parents=True, exist_ok=True)  # Create directory
         self.seed = seed
         self.device = get_device(device)
