@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--lr', type=float, default=0.07)
     parser.add_argument('--beta1', type=float, default=0.9)
     parser.add_argument('--beta2', type=float, default=0.999)
-    parser.add_argument('--save_path', type=directory, default='./save')
+    parser.add_argument('--save_path', type=path_to_dir, default='./save')
     parser.add_argument('--seed', type=int, default=int(time()))
     parser.add_argument('--deterministic', type=bool, default=False)
     parser.add_argument('--device', type=str, default='cuda')
@@ -60,16 +60,16 @@ def main():
     model.run()
 
 
-def directory(path, makedir=True):
+def path_to_dir(path, makedir=True, makedir_parent=True):
     dir = Path(path).expanduser().resolve()
     if makedir and not dir.exists():
-        dir.mkdir(parents=True)
+        dir.mkdir(parents=makedir_parent)
     if dir.exists() and not dir.is_dir():
         raise argparse.ArgumentTypeError(f"'{path}' is not a directory")
     return dir
 
 
-def filepath(path):
+def path_to_file(path):
     f = Path(path).expanduser().resolve()
     if not f.is_file():
         raise argparse.ArgumentTypeError(f"'{path}' is not a file")
