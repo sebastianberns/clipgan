@@ -3,9 +3,11 @@
 # System packages
 import argparse
 from pathlib import Path
+import random
 import time
 
 # Global packages
+import numpy as np
 import torch
 from torch.nn.functional import interpolate
 from torchvision.transforms import Normalize
@@ -70,8 +72,8 @@ def set_random_seed(self, seed=time.time()):
     """ Set random global seed
         seed (int) (optional)
     """
-    # random.seed(seed)
-    # np.random.seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
