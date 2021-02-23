@@ -152,14 +152,24 @@ class Latents(torch.nn.Module):
 
 class CLIPGAN:
     """ CLIPGAN
-        clip_name_or_path (str) Name of pre-trained CLIP model
-        steps (int)             Number of optimization steps
-        batch_size (int)        Number of samples (latent vectors)
-        lr (float)              Learning rate for Adam optimizer
-        beta1, beta2 (float)    Beta values for Adam optimizer
-        save_path (str)         Path to save directory
-        seed (int)              Random seed
-        device (str)            Device name ('cuda', 'cpu')
+        text_prompt (str, required) Generated images will be optimized to match
+                                    this text input
+        clip_name_or_path (str)     Name of pre-trained CLIP model or path to
+                                    saved state dict
+        generator (str)             Name of generator architecture
+        g_name_or_path (str)        Name of pre-trained generator model or path
+                                    to saved state dict
+        steps (int)                 Number of optimization steps
+        batch_size (int)            Number of latent vector samples
+        lr (float)                  Optimization step size for Adam optimizer
+        beta1, beta2 (float)        Adam optimizer parameters
+        save_path (str)             Path to save directory. A new folder based
+                                    on the text prompt will be created here.
+                                    Be careful, files will be overwritten
+                                    without warning!
+        seed (int)                  Random seed number
+        deterministic (bool)        Flag to make generation reproducible
+        device (str)                Device to run models and optimization on
     """
     def __init__(self, text_prompt,
                  clip_name_or_path='ViT-B/32',  # CLIP model name or path

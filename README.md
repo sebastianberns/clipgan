@@ -39,16 +39,17 @@ BigGAN:
 Arguments:
 
 - `text_prompt` (str, required) Generated images will be optimized to match this text input
-- `clip_name_or_path` (str) Name of pre-trained model to load or path to state dict (default: 'ViT-B/32')
+- `clip_name_or_path` (str) Name of pre-trained CLIP model or path to saved state dict (default: 'ViT-B/32')
 - `generator` (str) Name of generator architecture (default: 'biggan')
-- `g_name_or_path` (str) Name of pre-trained model to load or path to state dict (default: 'biggan-deep-512')
+- `g_name_or_path` (str) Name of pre-trained generator model or path to saved state dict (default: 'biggan-deep-512')
 - `steps` (int) Number of optimization steps (default: 500)
-- `batch_size` (int) Number of images to generate and optimize in parallel (default: 32)
+- `batch_size` (int) Number of latent vector samples (default: 32)
 - `lr` (float) Optimization step size for Adam optimizer (default: 0.07)
 - `beta1` (float) and `beta2` (float) Adam optimizer parameters (default: 0.9 and 0.999)
 - `save_path` (str) Path to save directory (default: './save'). A new folder based on the text prompt will be created here. Be careful, files will be overwritten without warning!
 - `seed` (int) Random seed number (default: current time)
-- `device` (str) Device to run models on (default: 'cuda')
+- `deterministic` (bool) Flag to make generation reproducible
+- `device` (str) Device to run models and optimization on (default: 'cuda')
 
 ### From the command line
 
