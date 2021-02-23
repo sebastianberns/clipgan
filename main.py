@@ -40,7 +40,8 @@ def main():
     # Pass argument namespace as dictionary
     # Arguments in the parser need to match
     # the arguments in the class constructor
-    CLIPGAN(**vars(args))
+    model = CLIPGAN(**vars(args))
+    model.run()
 
 
 def directory(path, makedir=True):
@@ -170,9 +171,6 @@ class CLIPGAN:
         self.optimizer = torch.optim.Adam(self.latents.parameters(),
                                           lr=self.lr, betas=self.betas,
                                           eps=1e-08, weight_decay=0)
-
-        torch.cuda.empty_cache()
-        self.run()
 
     def run(self):
         for step in trange(1, self.steps+1):
