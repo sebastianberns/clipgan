@@ -18,12 +18,16 @@ from tqdm import trange
 try:  # From command line
     import clip
     from biggan import BigGAN
+    from version import __version__
 except ModuleNotFoundError:  # As a package
     from .clip import *
     from .biggan import BigGAN
+    from .version import __version__
 
 
 def main():
+    print(f"CLIPGAN (v{__version__})")
+
     # Script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('text_prompt', type=str)
@@ -42,6 +46,11 @@ def main():
     parser.add_argument('--seed', type=int, default=int(time()))
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
+
+    print("Configuration:")
+    for arg in vars(args):
+        print(f"\t{arg}: {getattr(args, arg)}")
+    print()
 
     # Pass argument namespace as dictionary
     # Arguments in the parser need to match
